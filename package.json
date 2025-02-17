@@ -1,0 +1,16 @@
+{
+  "name": "bun-scripts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@deepgram/captions": "^1.2.0"
+  },
+  "scripts": {
+    "cli": "bun build ./convert_deepgram_json_to_srt.ts --compile --outfile bin/convert_deepgram_json_to_srt"
+  }
+}
