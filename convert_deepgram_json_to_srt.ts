@@ -13,29 +13,6 @@ const COLOR = {
   reset: "\x1b[0m",
 };
 
-// Type guard for Deepgram JSON structure
-function isDeepgramTranscript(json: any): json is DeepgramSchema {
-  return (
-    typeof json === "object" &&
-    typeof json?.metadata?.created === "string" &&
-    Array.isArray(json?.results?.channels) &&
-    json.results.channels.every(
-      (channel: any) =>
-        Array.isArray(channel.alternatives) &&
-        channel.alternatives.every(
-          (alt: any) =>
-            Array.isArray(alt.words) &&
-            alt.words.every(
-              (word: any) =>
-                typeof word.word === "string" &&
-                typeof word.start === "number" &&
-                typeof word.end === "number",
-            ),
-        ),
-    )
-  );
-}
-
 async function processFiles() {
   try {
     const targetDirArg = process.argv[2];
@@ -71,9 +48,7 @@ async function processFiles() {
     }
 
     if (dirMap.size === 0) {
-      console.log(
-        `${COLOR.yellow}No files found matching the glob pattern '**/*.json' in directory '${resolvedDir}'.${COLOR.reset}`,
-      );
+      console.log(`${COLOR.yellow}No JSON files found.${COLOR.reset}`);
       return;
     }
 
@@ -86,40 +61,76 @@ async function processFiles() {
       for (const file of files) {
         try {
           const filePath = path.join(resolvedDir, file);
-          const jsonContent = await Bun.file(filePath).json();
 
-          if (!isDeepgramTranscript(jsonContent)) {
-            continue;
+          let jsonContent: OrganicPathwayContent;
+          try {
+            jsonContent = (await Bun.file(
+              filePath,
+            ).json()) as OrganicPathwayContent;
+          } catch (jsonError) {
+            console.error(
+              `  ${COLOR.yellow}⚠️${COLOR.reset} JSON Parsing Error in ${path.basename(file)}: ${(jsonError as Error).message}`,
+            );
+            continue; // Skip to the next file if JSON parsing fails
           }
 
-          const srtPath = filePath.replace(/\.json$/, ".srt");
+          // Apply fix for missing start time in the first word in utterances
+          if (
+            jsonContent?.results?.utterances?.[0]?.words?.[0] &&
+            typeof jsonContent.results.utterances[0].words[0].start ===
+              "undefined"
+          ) {
+            console.log(
+              "undefined start time in utterances[0].words[0], setting to 0",
+            );
+            jsonContent.results.utterances[0].words[0].start = 0.0;
+          }
+
+          // Apply fix for missing start time in the first word in channels (fallback)
+          if (
+            jsonContent?.results?.channels?.[0]?.alternatives?.[0]
+              ?.words?.[0] &&
+            typeof jsonContent.results.channels[0].alternatives[0].words[0]
+              .start === "undefined"
+          ) {
+            console.log(
+              "undefined start time in channels[0].alternatives[0].words[0], setting to 0",
+            );
+            jsonContent.results.channels[0].alternatives[0].words[0].start = 0.0;
+          }
+
           if (!directoryPrinted) {
             console.log(`${COLOR.cyan}📁 ${dir}${COLOR.reset}`);
             directoryPrinted = true;
           }
 
-          const srtContent = srt(jsonContent);
-          await Bun.write(srtPath, srtContent);
-          console.log(
-            `  ${COLOR.green}→${COLOR.reset} ${path.basename(file)} → ${
-              path.basename(
-                srtPath,
-              )
-            }`,
-          );
-          conversionCount++;
-          conversionHappened = true;
-        } catch (error: unknown) {
-          if (error instanceof SyntaxError) {
-            continue;
+          const srtPath = filePath.replace(/\.json$/, ".srt");
+
+          let srtContent;
+          try {
+            srtContent = srt(jsonContent);
+          } catch (srtError: unknown) {
+            console.error(
+              `  ${COLOR.red}✗${COLOR.reset} SRT Conversion Error for ${path.basename(file)}: ${(srtError as Error).message}`,
+            );
+            continue; // Skip to the next file if SRT conversion fails
           }
 
+          try {
+            await Bun.write(srtPath, srtContent);
+            console.log(
+              `  ${COLOR.green}→${COLOR.reset} ${path.basename(file)} → ${path.basename(srtPath)}`,
+            );
+            conversionCount++;
+            conversionHappened = true;
+          } catch (writeError: unknown) {
+            console.error(
+              `  ${COLOR.red}✗${COLOR.reset} File Write Error for ${path.basename(srtPath)}: ${(writeError as Error).message}`,
+            );
+          }
+        } catch (error: unknown) {
           console.error(
-            `  ${COLOR.red}✗${COLOR.reset} Error processing ${
-              path.basename(
-                file,
-              )
-            }: ${(error as Error).message}`,
+            `  ${COLOR.red}✗${COLOR.reset} Error processing ${path.basename(file)}: ${(error as Error).message}`,
           );
         }
       }
@@ -136,22 +147,20 @@ async function processFiles() {
     }
   } catch (error: unknown) {
     console.error(
-      `${COLOR.red}🚨 Critical error: ${
-        (error as Error).message
-      }${COLOR.reset}`,
+      `${COLOR.red}🚨 Critical error: ${(error as Error).message}${COLOR.reset}`,
     );
   }
 }
 
 await processFiles();
 
-// Type definitions for Deepgram response
-interface DeepgramSchema {
+// Type definitions for Deepgram OrganicPathwayContent response
+interface OrganicPathwayContent {
   metadata: {
     transaction_key: string;
     request_id: string;
     sha256: string;
-    created: string;
+    created: string; // ISO 8601 Date
     duration: number;
     channels: number;
     models: string[];
@@ -169,6 +178,20 @@ interface DeepgramSchema {
           confidence: number;
           punctuated_word?: string;
         }[];
+      }[];
+    }[];
+    utterances?: {
+      speaker: string;
+      start: number;
+      end: number;
+      transcript: string;
+      confidence: number;
+      words: {
+        word: string;
+        start: number;
+        end: number;
+        confidence: number;
+        punctuated_word?: string;
       }[];
     }[];
   };
