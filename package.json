@@ -2,10 +2,10 @@
   "name": "bun-scripts",
   "type": "module",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.2.3"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.7.3"
   },
   "dependencies": {
     "@deepgram/captions": "^1.2.0"
