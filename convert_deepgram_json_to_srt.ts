@@ -80,9 +80,6 @@ async function processFiles() {
             typeof jsonContent.results.utterances[0].words[0].start ===
               "undefined"
           ) {
-            console.log(
-              "undefined start time in utterances[0].words[0], setting to 0",
-            );
             jsonContent.results.utterances[0].words[0].start = 0.0;
           }
 
@@ -93,9 +90,6 @@ async function processFiles() {
             typeof jsonContent.results.channels[0].alternatives[0].words[0]
               .start === "undefined"
           ) {
-            console.log(
-              "undefined start time in channels[0].alternatives[0].words[0], setting to 0",
-            );
             jsonContent.results.channels[0].alternatives[0].words[0].start = 0.0;
           }
 
